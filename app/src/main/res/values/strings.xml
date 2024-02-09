@@ -26,6 +26,8 @@
     <string name="tab_host_list">Block List</string>
     <string name="tab_host_whitelist">Pass List</string>
 
+    <string name="export">Export</string>
+    <string name="restore">Import</string>
 
     <string name="update_checkbox_status">Save</string>
     <string name="description_two">•automatically blocks ad requests, does not affect normal network</string>
@@ -36,7 +38,7 @@
 
     <string name="remove_flag_secure">Remove Flag Secure</string>
     <string name="remove_vpn_state">Remove VPN and system proxy detection</string>
-    <string name="remove_sensor_monitor">Remove Sensor Monitor</string>
+    <string name="remove_sensor_monitor">Remove acceleration sensor registration</string>
     <string name="remove_envi_detection">Remove Environment Detection</string>
 
     <string name="settings_theme">Theme</string>
@@ -45,7 +47,8 @@
     <string name="settings_theme_color">Theme Color</string>
     <string name="dark_theme">Dark Theme</string>
     <string name="settings_pure_black_dark_theme">Pure Black Dark Theme</string>
-    <string name="settings_pure_black_dark_theme_summary">Use the pure black theme if dark theme is enabled</string>    <string name="dark_theme_off">Always Off</string>
+    <string name="settings_pure_black_dark_theme_summary">Use the pure black theme if dark theme is enabled</string>
+    <string name="dark_theme_off">Always Off</string>
     <string name="dark_theme_on">Always On</string>
     <string name="follow_system">Follow System</string>
     <string name="dark_theme_follow_system">@string/follow_system</string>
@@ -82,5 +85,10 @@
     <string name="filter_disabled">Filter disabled</string>
     <string name="sort_by_default">The default sorting method has been switched to</string>
     <string name="about_view_source_code"><![CDATA[View source code at %1$s]]></string>
+    <string name="block">block</string>
+    <string name="clearAll">clear all</string>
+    <string name="block_list">Block List</string>
+    <string name="edit">edit</string>
+    <string name="settings_language">Language</string>
 
 </resources>

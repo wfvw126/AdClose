@@ -26,6 +26,8 @@
     <string name="tab_host_list">拦截列表</string>
     <string name="tab_host_whitelist">放行列表</string>
 
+    <string name="export">导出</string>
+    <string name="restore">导入</string>
 
     <string name="update_checkbox_status">保存开关配置</string>
     <string name="description_two">•自动屏蔽广告请求，不影响正常网络</string>
@@ -36,7 +38,7 @@
 
     <string name="remove_flag_secure">移除截图录屏限制</string>
     <string name="remove_vpn_state">去除VPN与系统代理检测</string>
-    <string name="remove_sensor_monitor">移除传感器监听</string>
+    <string name="remove_sensor_monitor">移除加速度传感器注册</string>
     <string name="remove_envi_detection">去除环境检测</string>
 
     <string name="settings_theme">主题</string>
@@ -82,5 +84,10 @@
     <string name="filter_disabled">已取消启用过滤器</string>
     <string name="sort_by_default">默认排序方式已切换为</string>
     <string name="about_view_source_code"><![CDATA[在 %1$s 查看源码]]></string>
+    <string name="block">加入黑名单</string>
+    <string name="clearAll">全部清除</string>
+    <string name="block_list">黑名单</string>
+    <string name="edit">编辑</string>
+    <string name="settings_language">语言</string>
 
 </resources>
