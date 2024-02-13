@@ -2,6 +2,7 @@ package com.close.hook.ads.ui.fragment
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.provider.Settings
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -33,9 +34,6 @@ import com.close.hook.ads.util.PrefManager
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.checkbox.MaterialCheckBox
-import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
-import io.reactivex.rxjava3.core.Observable
-import io.reactivex.rxjava3.disposables.CompositeDisposable
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import java.util.Locale
 import java.util.Optional
@@ -45,7 +43,6 @@ import java.util.stream.Collectors
 class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
     IOnTabClickListener {
 
-    private val disposables = CompositeDisposable()
     private val viewModel by lazy { ViewModelProvider(this)[AppsViewModel::class.java] }
     private lateinit var appsAdapter: AppsAdapter
     private var type: String? = null
@@ -90,11 +87,19 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
             appsAdapter.submitList(newList)
             binding.progressBar.visibility = View.GONE
         }
-        setupAdapterItemClick()
     }
 
     private fun setupRecyclerView() {
-        appsAdapter = AppsAdapter()
+        appsAdapter = AppsAdapter(requireContext(), object : AppsAdapter.OnItemClickListener {
+            override fun onItemClick(packageName: String) {
+                handleItemClick(packageName)
+            }
+
+            override fun onItemLongClick(packageName: String) {
+                handleItemLongClick(packageName)
+            }
+        })
+
         FastScrollerBuilder(binding.recyclerViewApps).useMd2Style().build()
         val space = resources.getDimensionPixelSize(ITEM_DECORATION_SPACE)
         binding.recyclerViewApps.apply {
@@ -105,32 +110,55 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     super.onScrolled(recyclerView, dx, dy)
-
+    
                     if (dy > 0) {
-                        (activity as INavContainer).hideNavigation()
+                        (activity as? INavContainer)?.hideNavigation()
                     } else if (dy < 0) {
-                        (activity as INavContainer).showNavigation()
+                        (activity as? INavContainer)?.showNavigation()
                     }
-
                 }
             })
         }
     }
 
+    private fun handleItemClick(packageName: String) {
+        val appInfo = viewModel.appInfoList.find { it.packageName == packageName }
+        if (appInfo != null) {
+            if (MainActivity.isModuleActivated()) {
+                showBottomSheetDialog(appInfo)
+            } else {
+                AppUtils.showToast(requireContext(), "模块尚未被激活")
+            }
+        }
+    }
+
+    private fun handleItemLongClick(packageName: String) {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        intent.data = Uri.fromParts("package", packageName, null)
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            AppUtils.showToast(requireContext(), "无法打开应用设置")
+            e.printStackTrace()
+        }
+    }
+
     private fun setupLiveDataObservation() {
         val appInfoMediatorLiveData = MediatorLiveData<List<AppInfo>>()
-
-        if (type == "configured" || type == "user") {
-            appInfoMediatorLiveData.addSource(viewModel.userAppsLiveData) { userApps ->
-                appInfoMediatorLiveData.value = processAppInfoList(userApps, "user")
+    
+        fun addSourceAndProcess(liveData: LiveData<List<AppInfo>>, type: String) {
+            appInfoMediatorLiveData.addSource(liveData) { apps ->
+                appInfoMediatorLiveData.value = processAppInfoList(apps, type)
             }
+        }
+    
+        if (type == "configured" || type == "user") {
+            addSourceAndProcess(viewModel.userAppsLiveData, "user")
         }
         if (type == "configured" || type == "system") {
-            appInfoMediatorLiveData.addSource(viewModel.systemAppsLiveData) { systemApps ->
-                appInfoMediatorLiveData.value = processAppInfoList(systemApps, "system")
-            }
+            addSourceAndProcess(viewModel.systemAppsLiveData, "system")
         }
-
+    
         appInfoMediatorLiveData.observe(viewLifecycleOwner) { combinedAppInfoList ->
             handleCombinedAppInfoList(combinedAppInfoList)
         }
@@ -154,38 +182,15 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
         }
     }
 
-    private fun setupAdapterItemClick() {
-        disposables.add(appsAdapter.onClickObservable.observeOn(AndroidSchedulers.mainThread())
-            .subscribe { packageName: String ->
-                val appInfo = viewModel.appInfoList.find { it.packageName == packageName }
-                if (appInfo != null) {
-                    if (MainActivity.isModuleActivated()) {
-                        showBottomSheetDialog(appInfo)
-                    } else {
-                        AppUtils.showToast(requireContext(), "模块尚未被激活")
-                    }
-                }
-            })
-
-        disposables.add(appsAdapter.onLongClickObservable.observeOn(AndroidSchedulers.mainThread())
-            .subscribe { packageName: String ->
-                val intent = Intent()
-                intent.action = "android.settings.APPLICATION_DETAILS_SETTINGS"
-                intent.data = Uri.fromParts("package", packageName, null)
-                try {
-                    requireContext().startActivity(intent)
-                } catch (e: ActivityNotFoundException) {
-                    AppUtils.showToast(requireContext(), "打开失败")
-                    e.printStackTrace()
-                }
-            })
-    }
-
-    @SuppressLint("InflateParams")
     private fun showBottomSheetDialog(appInfo: AppInfo) {
         bottomSheetDialog = BottomSheetDialog(requireContext())
         val binding = BottomDialogSwitchesBinding.inflate(layoutInflater, null, false)
         bottomSheetDialog.setContentView(binding.root)
+        setupBottomSheetDialogBinding(binding, appInfo)
+        bottomSheetDialog.show()
+    }
+
+    private fun setupBottomSheetDialogBinding(binding: BottomDialogSwitchesBinding, appInfo: AppInfo) {
         binding.apply {
             sheetAppName.text = appInfo.appName
             buttonClose.setOnClickListener { bottomSheetDialog.dismiss() }
@@ -193,7 +198,6 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
             icon.setImageDrawable(AppUtils.getAppIcon(appInfo.packageName))
         }
         setupListeners(binding.root, appInfo)
-        bottomSheetDialog.show()
     }
 
     private fun updateCheckNum(packageName: String, isChecked: Boolean?) {
@@ -359,7 +363,6 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), OnClearClickListener,
 
     override fun onDestroyView() {
         super.onDestroyView()
-        disposables.clear()
     }
 
     companion object {
