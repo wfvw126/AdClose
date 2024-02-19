@@ -105,26 +105,13 @@ public class RequestHook {
         if (host == null) {
             return false;
         }
-        boolean shouldBlock = false;
-        String blockType = null;
-        Pair<Boolean, String> pair = queryHostContentProvider(host);
-        if (pair.first) {
-            shouldBlock = true;
-            blockType = pair.second;
-        }
+
+        Pair<Boolean, String> pair = queryContentProvider("host", host);
+        boolean shouldBlock = pair.first;
+        String blockType = pair.second;
+
         sendBroadcast(" DNS", shouldBlock, blockType, host);
         return shouldBlock;
-    }
-
-    private static void setupHttpConnectionHook() {
-        try {
-            Class<?> httpURLConnectionImpl = Class.forName("com.android.okhttp.internal.huc.HttpURLConnectionImpl");
-
-            XposedHelpers.findAndHookMethod(httpURLConnectionImpl, "getInputStream", httpConnectionHook);
-            XposedHelpers.findAndHookMethod(httpURLConnectionImpl, "getOutputStream", httpConnectionHook);
-        } catch (Exception e) {
-            XposedBridge.log(LOG_PREFIX + "Error setting up HTTP connection hook: " + e.getMessage());
-        }
     }
 
     private static final XC_MethodHook httpConnectionHook = new XC_MethodHook() {
@@ -149,13 +136,11 @@ public class RequestHook {
             return false;
         }
         String formattedUrl = formatUrlWithoutQuery(url);
-        boolean shouldBlock = false;
-        String blockType = null;
-        Pair<Boolean, String> pair = queryURLContentProvider(formattedUrl);
-        if (pair.first) {
-            shouldBlock = true;
-            blockType = pair.second;
-        }
+
+        Pair<Boolean, String> pair = queryContentProvider("url", formattedUrl);
+        boolean shouldBlock = pair.first;
+        String blockType = pair.second;
+
         sendBroadcast(" HTTP", shouldBlock, blockType, formattedUrl);
         return shouldBlock;
     }
@@ -180,18 +165,16 @@ public class RequestHook {
             if (chain == null) {
                 return false;
             }
-
+    
             Object request = XposedHelpers.callMethod(chain, "request");
             Object httpUrl = XposedHelpers.callMethod(request, "url");
             URL url = new URL(httpUrl.toString());
             String formattedUrl = formatUrlWithoutQuery(url);
-            boolean shouldBlock = false;
-            String blockType = null;
-            Pair<Boolean, String> pair = queryURLContentProvider(formattedUrl);
-            if (pair.first) {
-                shouldBlock = true;
-                blockType = pair.second;
-            }
+
+            Pair<Boolean, String> pair = queryContentProvider("url", formattedUrl);
+            boolean shouldBlock = pair.first;
+            String blockType = pair.second;
+
             sendBroadcast(" OKHTTP", shouldBlock, blockType, formattedUrl);
             return shouldBlock;
         } catch (Exception e) {
@@ -200,13 +183,21 @@ public class RequestHook {
         }
     }
 
-    private static Pair<Boolean, String> queryHostContentProvider(String host) {
+    private static Pair<Boolean, String> queryContentProvider(String queryType, String queryValue) {
         Context context = AndroidAppHelper.currentApplication();
         if (context != null) {
             ContentResolver contentResolver = context.getContentResolver();
             Uri uri = Uri.parse("content://" + UrlContentProvider.AUTHORITY + "/" + UrlContentProvider.URL_TABLE_NAME);
+            String[] projection = new String[]{Url.Companion.getURL_TYPE(), Url.Companion.getURL_ADDRESS()};
+            String selection = null;
+            String[] selectionArgs = null;
+    
+            if ("host".equals(queryType)) {
+                selection = Url.Companion.getURL_TYPE() + " = ?";
+                selectionArgs = new String[]{"host"};
+            }
 
-            try (Cursor cursor = contentResolver.query(uri, null, null, null, null)) {
+            try (Cursor cursor = contentResolver.query(uri, projection, selection, selectionArgs, null)) {
                 if (cursor != null) {
                     int urlTypeIndex = cursor.getColumnIndex(Url.Companion.getURL_TYPE());
                     int urlValueIndex = cursor.getColumnIndex(Url.Companion.getURL_ADDRESS());
@@ -215,10 +206,10 @@ public class RequestHook {
                         String urlType = cursor.getString(urlTypeIndex);
                         String urlValue = cursor.getString(urlValueIndex);
 
-                        if (urlType.equalsIgnoreCase("host") && Objects.equals(urlValue, host)) {
+                        if ("host".equals(queryType) && Objects.equals(urlValue, queryValue)) {
                             return new Pair<>(true, "Host");
-                        } else if ((urlType.equalsIgnoreCase("url") || urlType.equalsIgnoreCase("keyword")) && host.contains(urlValue)) {
-                            return new Pair<>(true, urlType.replace("url", "URL").replace("keyword", "KeyWord"));
+                        } else if (("url".equals(queryType) || "keyword".equals(queryType)) && queryValue.contains(urlValue)) {
+                            return new Pair<>(true, formatUrlType(urlType));
                         }
                     }
                 }
@@ -227,42 +218,8 @@ public class RequestHook {
         return new Pair<>(false, null);
     }
 
-    private static Pair<Boolean, String> queryURLContentProvider(String formattedUrl) {
-        Context context = AndroidAppHelper.currentApplication();
-        if (context != null) {
-            ContentResolver contentResolver = context.getContentResolver();
-            Uri uri = Uri.parse("content://" + UrlContentProvider.AUTHORITY + "/" + UrlContentProvider.URL_TABLE_NAME);
-
-            try (Cursor cursor = contentResolver.query(uri, null, null, null, null)) {
-                if (cursor != null) {
-                    int urlTypeIndex = cursor.getColumnIndex(Url.Companion.getURL_TYPE());
-                    int urlValueIndex = cursor.getColumnIndex(Url.Companion.getURL_ADDRESS());
-
-                    while (cursor.moveToNext()) {
-                        String urlType = cursor.getString(urlTypeIndex);
-                        String urlValue = cursor.getString(urlValueIndex);
-
-                        String host = extractHost(formattedUrl);
-
-                        if ("host".equalsIgnoreCase(urlType) && Objects.equals(urlValue, host)) {
-                            return new Pair<>(true, "Host");
-                        } else if (("url".equalsIgnoreCase(urlType) || "keyword".equalsIgnoreCase(urlType)) && formattedUrl.contains(urlValue)) {
-                            return new Pair<>(true, urlType.replace("url", "URL").replace("keyword", "KeyWord"));
-                        }
-                    }
-                }
-            }
-        }
-        return new Pair<>(false, null);
-    }
-
-    private static String extractHost(String url) {
-        String host = url.replace("https://", "").replace("http://", "");
-        int indexOfSlash = host.indexOf('/');
-        if (indexOfSlash != -1) {
-            host = host.substring(0, indexOfSlash);
-        }
-        return host;
+    private static String formatUrlType(String urlType) {
+        return urlType.replace("url", "URL").replace("keyword", "KeyWord");
     }
 
     private static String formatUrlWithoutQuery(URL url) {
@@ -275,21 +232,28 @@ public class RequestHook {
         }
     }
 
+    private static String extractHost(String url) {
+        String host = url.replace("https://", "").replace("http://", "");
+        int indexOfSlash = host.indexOf('/');
+        if (indexOfSlash != -1) {
+            host = host.substring(0, indexOfSlash);
+        }
+        return host;
+    }
+
     private static void setupHttpRequestHook() {
         try {
             Class<?> httpURLConnectionImpl = Class.forName("com.android.okhttp.internal.huc.HttpURLConnectionImpl");
+
             XposedHelpers.findAndHookMethod(httpURLConnectionImpl, "execute", boolean.class, new XC_MethodHook() {
-
-                @Override
-                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                    setupHttpConnectionHook();
-                }
-
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                     processHttpRequestAsync(param);
                 }
             });
+
+            XposedHelpers.findAndHookMethod(httpURLConnectionImpl, "getInputStream", httpConnectionHook);
+            XposedHelpers.findAndHookMethod(httpURLConnectionImpl, "getOutputStream", httpConnectionHook);
         } catch (Exception e) {
             XposedBridge.log(LOG_PREFIX + "Error setting up HTTP connection hook: " + e.getMessage());
         }
