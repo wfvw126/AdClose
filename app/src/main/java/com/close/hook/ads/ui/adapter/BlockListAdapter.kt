@@ -1,32 +1,28 @@
 package com.close.hook.ads.ui.adapter
 
-import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.view.LayoutInflater
-import android.view.MenuItem
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.selection.ItemDetailsLookup
 import androidx.recyclerview.selection.SelectionTracker
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.close.hook.ads.R
-import com.close.hook.ads.data.model.Item
+import com.close.hook.ads.data.model.Url
 import com.close.hook.ads.databinding.ItemBlockListBinding
 import com.close.hook.ads.util.dp
 
 class BlockListAdapter(
     private val context: Context,
-    private val onRemoveUrl: (Int) -> Unit,
-    private val onEditUrl: (Int) -> Unit
+    private val onRemoveUrl: (Url) -> Unit,
+    private val onEditUrl: (Url) -> Unit
 ) :
-    ListAdapter<Item, BlockListAdapter.ViewHolder>(DIFF_CALLBACK) {
+    ListAdapter<Url, BlockListAdapter.ViewHolder>(DIFF_CALLBACK) {
 
-    var tracker: SelectionTracker<String>? = null
+    var tracker: SelectionTracker<Url>? = null
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding =
@@ -36,80 +32,62 @@ class BlockListAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         tracker?.let {
-            holder.bind(getItem(position), it.isSelected(getItem(position).url))
+            holder.bind(getItem(position), it.isSelected(getItem(position)))
         }
     }
 
-    @SuppressLint("NotifyDataSetChanged")
     inner class ViewHolder(
         private val binding: ItemBlockListBinding,
         private val context: Context,
-        private val onRemoveUrl: (Int) -> Unit,
-        private val onEditUrl: (Int) -> Unit
-    ) : RecyclerView.ViewHolder(binding.root), PopupMenu.OnMenuItemClickListener {
+        private val onRemoveUrl: (Url) -> Unit,
+        private val onEditUrl: (Url) -> Unit
+    ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun getItemDetails(): ItemDetailsLookup.ItemDetails<String> =
-            object : ItemDetailsLookup.ItemDetails<String>() {
-                override fun getPosition(): Int = bindingAdapterPosition
-                override fun getSelectionKey(): String = getItem(bindingAdapterPosition).url
+        fun getItemDetails(): ItemDetailsLookup.ItemDetails<Url> =
+            object : ItemDetailsLookup.ItemDetails<Url>() {
+                override fun getPosition(): Int = bindingAdapterPosition + 1
+                override fun getSelectionKey(): Url = getItem(bindingAdapterPosition)
             }
 
         init {
             binding.edit.setOnClickListener {
-                onEditUrl(bindingAdapterPosition)
+                onEditUrl(currentList[bindingAdapterPosition])
             }
             binding.delete.setOnClickListener {
-                onRemoveUrl(bindingAdapterPosition)
+                onRemoveUrl(currentList[bindingAdapterPosition])
+            }
+            binding.cardView.setOnClickListener {
+                copyToClipboard(binding.type.text.toString(), binding.url.text.toString())
             }
         }
 
-        private fun showPopupMenu() {
-            PopupMenu(context, itemView).apply {
-                menuInflater.inflate(R.menu.menu_request, menu)
-                menu.findItem(R.id.block).title = "移除黑名单"
-                setOnMenuItemClickListener(this@ViewHolder)
-                show()
-            }
-        }
-
-        fun bind(item: Item, isSelected: Boolean) {
+        fun bind(item: Url, isSelected: Boolean) {
             with(binding) {
                 url.text = item.url
                 type.text =
                     item.type.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                 cardView.isChecked = isSelected
-                if (isSelected)
-                    container.setPadding(16.dp, 12.dp, 35.dp, 12.dp)
-                else
-                    container.setPadding(16.dp, 12.dp, 16.dp, 12.dp)
+                container.setPadding(16.dp, 12.dp, if (isSelected) 35.dp else 16.dp, 12.dp)
             }
         }
 
-        override fun onMenuItemClick(menuItem: MenuItem?): Boolean {
-            when (menuItem?.itemId) {
-                R.id.copy -> copyToClipboard()
-                R.id.block -> onRemoveUrl(bindingAdapterPosition)
-                R.id.edit -> onEditUrl(bindingAdapterPosition)
-            }
-            return true
-        }
-
-        private fun copyToClipboard() {
+        private fun copyToClipboard(type: String, url: String) {
             val clipboardManager =
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clipDataText = "${binding.type.text}, ${binding.url.text}"
+            val clipDataText = "$type, $url"
             val clipData = ClipData.newPlainText("request", clipDataText)
             clipboardManager.setPrimaryClip(clipData)
             Toast.makeText(context, "已复制: $clipDataText", Toast.LENGTH_SHORT).show()
         }
+
     }
 
     companion object {
-        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<Item>() {
-            override fun areItemsTheSame(oldItem: Item, newItem: Item): Boolean =
+        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<Url>() {
+            override fun areItemsTheSame(oldItem: Url, newItem: Url): Boolean =
                 oldItem.url == newItem.url && oldItem.type == newItem.type
 
-            override fun areContentsTheSame(oldItem: Item, newItem: Item): Boolean =
+            override fun areContentsTheSame(oldItem: Url, newItem: Url): Boolean =
                 oldItem == newItem
         }
     }

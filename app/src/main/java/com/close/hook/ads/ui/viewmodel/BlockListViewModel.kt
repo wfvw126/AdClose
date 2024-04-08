@@ -1,35 +1,60 @@
 package com.close.hook.ads.ui.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.viewModelScope
-import com.close.hook.ads.data.database.UrlDatabase
-import com.close.hook.ads.data.model.Item
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import android.content.Context
+import androidx.lifecycle.asLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.close.hook.ads.data.DataSource
+import com.close.hook.ads.data.model.BlockedRequest
+import com.close.hook.ads.data.model.Url
+import kotlinx.coroutines.flow.MutableStateFlow
 
-class BlockListViewModel(application: Application) : AndroidViewModel(application) {
+class BlockListViewModel(val dataSource: DataSource) : ViewModel() {
 
-    val blockList = ArrayList<Item>()
-    val blackListLiveData: MutableLiveData<ArrayList<Item>> = MutableLiveData()
+    var requestList = ArrayList<BlockedRequest>()
 
-    private val urlDao by lazy {
-        UrlDatabase.getDatabase(application).urlDao
+    val blackListLiveData = dataSource.getUrlList().asLiveData()
+
+    val searchQuery = MutableStateFlow("")
+
+    fun addUrl(url: Url) {
+        dataSource.addUrl(url)
     }
 
-    init {
-        getBlackList()
+    fun removeList(list: List<Url>) {
+        dataSource.removeList(list)
     }
 
-    fun getBlackList() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val urls = urlDao.loadAllList()
-            val newList = urls.map { Item(it.type, it.url) }
-            withContext(Dispatchers.Main) {
-                blackListLiveData.value = ArrayList(newList)
-            }
+    fun removeUrl(url: Url) {
+        dataSource.removeUrl(url)
+    }
+
+    fun removeAll() {
+        dataSource.removeAll()
+    }
+
+    fun addListUrl(list: List<Url>) {
+        dataSource.addListUrl(list)
+    }
+
+    fun updateUrl(url: Url) {
+        dataSource.updateUrl(url)
+    }
+
+    fun removeUrlString(type: String, url: String) {
+        dataSource.removeUrlString(type, url)
+    }
+
+}
+
+class UrlViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(BlockListViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return BlockListViewModel(
+                dataSource = DataSource.getDataSource(context)
+            ) as T
         }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

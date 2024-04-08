@@ -2,11 +2,13 @@ package com.close.hook.ads.data.dao
 
 import android.database.Cursor
 import androidx.room.Dao
+import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.close.hook.ads.data.model.Url
-
+import kotlinx.coroutines.flow.Flow
 @Dao
 interface UrlDao {
 
@@ -17,7 +19,7 @@ interface UrlDao {
     fun findAll(): Cursor
 
     @Query("DELETE FROM url_info WHERE id = :id ")
-    fun delete(id: Long): Int
+    fun deleteById(id: Long): Int
 
     @Update
     fun update(url: Url): Int
@@ -25,20 +27,30 @@ interface UrlDao {
     @Insert
     fun insertAll(urls: List<Url>)
 
-    @Query("select * from url_info ORDER BY id DESC")
-    fun loadAllList(): List<Url>
+    @Query("SELECT * FROM url_info ORDER BY id DESC")
+    fun loadAllList(): Flow<List<Url>>
 
-    @Query("SELECT url FROM url_info")
+    @Query("SELECT url FROM url_info ORDER BY id DESC")
     fun getAllUrls(): List<String>
 
-    @Query("SELECT * FROM url_info WHERE url LIKE :searchText")
+    @Transaction
+    @Query("SELECT * FROM url_info WHERE url LIKE '%' || :searchText || '%' ORDER BY id DESC")
     fun searchUrls(searchText: String): List<Url>
 
     @Query("SELECT 1 FROM url_info WHERE url = :url LIMIT 1")
     fun isExist(url: String): Boolean
 
-    @Query("DELETE FROM url_info WHERE url = :url")
-    fun delete(url: String)
+    @Query("SELECT 1 FROM url_info WHERE type = :type AND url = :url LIMIT 1")
+    fun isExist(type: String, url:String): Boolean
+
+    @Delete
+    fun deleteList(list:List<Url>)
+
+    @Delete
+    fun deleteUrl(url: Url)
+
+    @Query("DELETE FROM url_info WHERE type = :type AND url = :url")
+    fun deleteUrlString(type: String, url:String)
 
     @Query("DELETE FROM url_info")
     fun deleteAll()

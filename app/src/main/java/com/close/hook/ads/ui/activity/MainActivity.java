@@ -10,11 +10,11 @@ import androidx.viewpager2.adapter.FragmentStateAdapter;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.close.hook.ads.R;
-import com.close.hook.ads.data.database.UrlDatabase;
-import com.close.hook.ads.ui.fragment.InstalledAppsFragment;
-import com.close.hook.ads.ui.fragment.RequestFragment;
-import com.close.hook.ads.ui.fragment.SettingsFragment;
-import com.close.hook.ads.util.DataUtil;
+import com.close.hook.ads.ui.fragment.BlockListFragment;
+import com.close.hook.ads.ui.fragment.HomeFragment;
+import com.close.hook.ads.ui.fragment.app.AppsPagerFragment;
+import com.close.hook.ads.ui.fragment.request.RequestFragment;
+import com.close.hook.ads.ui.fragment.settings.SettingsFragment;
 import com.close.hook.ads.util.INavContainer;
 import com.close.hook.ads.util.OnBackPressContainer;
 import com.close.hook.ads.util.OnBackPressListener;
@@ -37,15 +37,16 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         setupViewPagerAndBottomNavigation();
-        setData();
     }
 
+/*
     private void setData() {
         if (PrefManager.INSTANCE.getSetData()) {
             PrefManager.INSTANCE.setSetData(false);
             DataUtil.INSTANCE.setData(UrlDatabase.Companion.getDatabase(this).getUrlDao());
         }
     }
+*/
 
     public static boolean isModuleActivated() {
         return false;
@@ -57,8 +58,10 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
         hideBottomViewOnScrollBehavior = new HideBottomViewOnScrollBehavior<BottomNavigationView>();
 
         List<Fragment> fragments = new ArrayList<>();
-        fragments.add(new InstalledAppsFragment());
+        fragments.add(new AppsPagerFragment());
         fragments.add(new RequestFragment());
+        fragments.add(new HomeFragment());
+        fragments.add(new BlockListFragment());
         fragments.add(new SettingsFragment());
 
         BottomFragmentStateAdapter adapter = new BottomFragmentStateAdapter(this, fragments);
@@ -72,6 +75,10 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
                 viewPager2.setCurrentItem(1);
             } else if (item.getItemId() == R.id.bottom_item_3) {
                 viewPager2.setCurrentItem(2);
+            } else if (item.getItemId() == R.id.bottom_item_4) {
+                viewPager2.setCurrentItem(3);
+            } else if (item.getItemId() == R.id.bottom_item_5) {
+                viewPager2.setCurrentItem(4);
             }
             return true;
         });
@@ -86,6 +93,7 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
                 updateCurrentFragmentController(position);
             }
         });
+        viewPager2.setCurrentItem(PrefManager.INSTANCE.getDefaultPage(), false);
     }
 
     private void updateCurrentFragmentController(int position) {
@@ -105,12 +113,12 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
     }
 
     @Override
-    public OnBackPressListener getController() {
+    public OnBackPressListener getBackController() {
         return currentFragmentController;
     }
 
     @Override
-    public void setController(OnBackPressListener onBackPressListener) {
+    public void setBackController(OnBackPressListener onBackPressListener) {
         this.currentFragmentController = onBackPressListener;
     }
 

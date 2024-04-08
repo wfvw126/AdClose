@@ -44,13 +44,17 @@
 
     <PreferenceCategory android:title="@string/others">
         <Preference
-            android:icon="@drawable/ic_block"
-            android:key="blockList"
-            android:title="@string/block_list" />
-        <Preference
             android:icon="@drawable/ic_about"
             android:key="about"
             android:title="@string/about" />
+        <rikka.preference.SimpleMenuPreference
+            android:defaultValue="2"
+            android:entries="@array/default_page_texts"
+            android:entryValues="@array/default_page_values"
+            android:icon="@drawable/ic_home_outline"
+            android:key="defaultPage"
+            android:summary="%s"
+            android:title="@string/default_page" />
         <Preference
             android:icon="@drawable/ic_clean"
             android:key="clean"
@@ -61,10 +65,8 @@
             android:title="@string/hide_icon" />
     </PreferenceCategory>
 
-    <Preference
-        android:enabled="false" />
+    <Preference android:enabled="false" />
 
-    <Preference
-        android:enabled="false" />
+    <Preference android:enabled="false" />
 
 </PreferenceScreen>

@@ -7,11 +7,13 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.signature.ObjectKey
 import com.close.hook.ads.R
 import com.close.hook.ads.data.model.AppInfo
 import com.close.hook.ads.databinding.InstallsItemAppBinding
+import com.close.hook.ads.util.AppUtils.getAppIconNew
 
 class AppsAdapter(
     context: Context,
@@ -23,7 +25,8 @@ class AppsAdapter(
         .override(context.resources.getDimensionPixelSize(R.dimen.app_icon_size))
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AppViewHolder {
-        val binding = InstallsItemAppBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        val binding =
+            InstallsItemAppBinding.inflate(LayoutInflater.from(parent.context), parent, false)
         return AppViewHolder(binding, onItemClickListener, requestOptions)
     }
 
@@ -42,21 +45,29 @@ class AppsAdapter(
         private val requestOptions: RequestOptions
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        lateinit var appInfo: AppInfo
+
+        init {
+            with(binding.root) {
+                setOnClickListener { onItemClickListener.onItemClick(appInfo) }
+                setOnLongClickListener {
+                    onItemClickListener.onItemLongClick(appInfo)
+                    true
+                }
+            }
+        }
+
         fun bind(appInfo: AppInfo) {
+            this.appInfo = appInfo
             with(binding) {
                 appName.text = appInfo.appName
                 packageName.text = appInfo.packageName
                 appVersion.text = "${appInfo.versionName} (${appInfo.versionCode})"
-                Glide.with(appIcon.context)
-                    .load(appInfo.appIcon)
+                Glide.with(binding.appIcon.context)
+                    .load(getAppIconNew(appInfo.packageName))
                     .apply(requestOptions)
-                    .into(appIcon)
-
-                root.setOnClickListener { onItemClickListener.onItemClick(appInfo.packageName) }
-                root.setOnLongClickListener {
-                    onItemClickListener.onItemLongClick(appInfo.packageName)
-                    true
-                }
+                    .signature(ObjectKey("${appInfo.packageName}-${appInfo.versionCode}"))
+                    .into(binding.appIcon)
             }
         }
 
@@ -66,8 +77,8 @@ class AppsAdapter(
     }
 
     interface OnItemClickListener {
-        fun onItemClick(packageName: String)
-        fun onItemLongClick(packageName: String)
+        fun onItemClick(appInfo: AppInfo)
+        fun onItemLongClick(appInfo: AppInfo)
     }
 
     companion object {

@@ -30,8 +30,8 @@
     <string name="restore">Import</string>
 
     <string name="update_checkbox_status">Save</string>
-    <string name="description_two">•automatically blocks ad requests, does not affect normal network</string>
-    <string name="description_seven">•General Root, Magisk and Xposed detection only</string>
+    <string name="description_two">Enabled to manage web ad request blocking on Request page</string>
+    <string name="description_six">General Root, Magisk and Xposed detection only</string>
 
     <string name="handle_platform_ad">Stop platform ad initialization</string>
     <string name="check_request">App request checking</string>
@@ -86,10 +86,25 @@
     <string name="sort_by_default">The default sorting method has been switched to</string>
     <string name="about_view_source_code"><![CDATA[View source code at %1$s]]></string>
     <string name="block">block</string>
+    <string name="copy">copy to clipboard</string>
     <string name="clearAll">clear all</string>
     <string name="block_list">Block List</string>
     <string name="edit">edit</string>
     <string name="settings_language">Language</string>
     <string name="delete">Delete</string>
-
+    <string name="bottom_item_4">Block</string>
+    <string name="add">add</string>
+    <string name="bottom_item_5">Home</string>
+    <string name="info">Info</string>
+    <string name="android_version">Android Version</string>
+    <string name="sdk_level">SDK Level</string>
+    <string name="android_id">Android ID</string>
+    <string name="brand">Brand</string>
+    <string name="model">Model</string>
+    <string name="sku">SKU</string>
+    <string name="build_type">Build Type</string>
+    <string name="finger_print">Finger Print</string>
+    <string name="support">Support</string>
+    <string name="join_telegram_channel"><![CDATA[Join %1$s Channel]]></string>
+    <string name="default_page">Default Page</string>
 </resources>
