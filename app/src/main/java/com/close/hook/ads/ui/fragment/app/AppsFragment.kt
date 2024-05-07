@@ -7,13 +7,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.ConcatAdapter
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.close.hook.ads.data.model.AppInfo
-import com.close.hook.ads.data.repository.AppRepository
+import com.close.hook.ads.data.model.ConfiguredBean
 import com.close.hook.ads.databinding.BottomDialogAppInfoBinding
 import com.close.hook.ads.databinding.BottomDialogSwitchesBinding
 import com.close.hook.ads.databinding.FragmentAppsBinding
@@ -21,38 +23,43 @@ import com.close.hook.ads.hook.preference.PreferencesHelper
 import com.close.hook.ads.ui.activity.MainActivity
 import com.close.hook.ads.ui.adapter.AppsAdapter
 import com.close.hook.ads.ui.adapter.FooterAdapter
-import com.close.hook.ads.ui.adapter.HeaderAdapter
 import com.close.hook.ads.ui.fragment.base.BaseFragment
 import com.close.hook.ads.ui.viewmodel.AppsViewModel
-import com.close.hook.ads.ui.viewmodel.AppsViewModelFactory
 import com.close.hook.ads.util.AppUtils
 import com.close.hook.ads.util.CacheDataManager.getFormatSize
 import com.close.hook.ads.util.INavContainer
+import com.close.hook.ads.util.IOnFabClickContainer
+import com.close.hook.ads.util.IOnFabClickListener
 import com.close.hook.ads.util.IOnTabClickContainer
 import com.close.hook.ads.util.IOnTabClickListener
 import com.close.hook.ads.util.LinearItemDecoration
 import com.close.hook.ads.util.OnCLearCLickContainer
 import com.close.hook.ads.util.OnClearClickListener
 import com.close.hook.ads.util.dp
+import com.close.hook.ads.util.setSpaceFooterView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.color.MaterialColors
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClickListener,
-    IOnTabClickListener, OnClearClickListener {
+    IOnTabClickListener, OnClearClickListener, IOnFabClickListener {
 
-    private val viewModel by viewModels<AppsViewModel> {
-        AppsViewModelFactory(
-            arguments?.getString("type") ?: "user",
-            AppRepository(requireContext().packageManager)
-        )
-    }
+    private val viewModel by viewModels<AppsViewModel>()
     private lateinit var mAdapter: AppsAdapter
-    private val headerAdapter = HeaderAdapter()
     private val footerAdapter = FooterAdapter()
     private var appConfigDialog: BottomSheetDialog? = null
     private var appInfoDialog: BottomSheetDialog? = null
@@ -66,6 +73,22 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
             configBinding.switchFour,
             configBinding.switchFive,
             configBinding.switchSix,
+            configBinding.switchSeven,
+        )
+    }
+    private val prefKeys = listOf(
+        "switch_one_",
+        "switch_two_",
+        "switch_three_",
+        "switch_four_",
+        "switch_five_",
+        "switch_six_",
+        "switch_seven_",
+    )
+    private val prefsHelper by lazy {
+        PreferencesHelper(
+            requireContext(),
+            "com.close.hook.ads_preferences"
         )
     }
 
@@ -77,6 +100,15 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
                     putString("type", type)
                 }
             }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        with(arguments?.getString("type") ?: "user") {
+            viewModel.type = this
+            if (this == "configured")
+                (parentFragment as? IOnFabClickContainer)?.fabController = this@AppsFragment
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -126,7 +158,7 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
             }
 
             var isUpdatingChildren = false
-    
+
             fun updateChildrenCheckBoxes(isChecked: Boolean) {
                 isUpdatingChildren = true
                 childrenCheckBoxes.forEach { childCheckBox ->
@@ -210,7 +242,7 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
     private fun initView() {
         mAdapter = AppsAdapter(requireContext(), this)
         binding.recyclerView.apply {
-            adapter = ConcatAdapter(headerAdapter, mAdapter)
+            adapter = ConcatAdapter(mAdapter)
             layoutManager = LinearLayoutManager(requireContext())
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -228,17 +260,7 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
         }
 
         binding.vfContainer.setOnDisplayedChildChangedListener {
-            val isNotAtBottom = (binding.recyclerView.layoutManager as LinearLayoutManager)
-                .findLastCompletelyVisibleItemPosition() < mAdapter.itemCount - 1
-
-            with(binding.recyclerView.adapter as ConcatAdapter) {
-                val hasFooter = adapters.contains(footerAdapter)
-                if (isNotAtBottom && hasFooter) {
-                    removeAdapter(footerAdapter)
-                } else if (!isNotAtBottom && !hasFooter) {
-                    addAdapter(footerAdapter)
-                }
-            }
+            binding.recyclerView.setSpaceFooterView(footerAdapter)
         }
     }
 
@@ -248,7 +270,12 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
             binding.swipeRefresh.isRefreshing = false
             binding.progressBar.isVisible = false
             updateSearchHint(it.size)
-            binding.vfContainer.displayedChild = it.size
+            val adapter = binding.recyclerView.adapter as ConcatAdapter
+            if (it.isEmpty() && adapter.adapters.contains(footerAdapter)) {
+                adapter.removeAdapter(footerAdapter)
+            }
+            if (binding.vfContainer.displayedChild != it.size)
+                binding.vfContainer.displayedChild = it.size
         }
     }
 
@@ -262,20 +289,10 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
             AppUtils.showToast(requireContext(), "模块尚未被激活")
             return
         }
-        val prefsHelper = PreferencesHelper(requireContext(), "com.close.hook.ads_preferences")
         configBinding.apply {
             sheetAppName.text = appInfo.appName
             version.text = appInfo.versionName
-            icon.setImageBitmap(AppUtils.getAppIconNew(appInfo.packageName))
-
-            val prefKeys = arrayOf(
-                "switch_one_",
-                "switch_two_",
-                "switch_three_",
-                "switch_four_",
-                "switch_five_",
-                "switch_six_",
-            )
+            icon.setImageDrawable(AppUtils.getAppIcon(appInfo.packageName))
 
             childrenCheckBoxes.forEachIndexed { index, checkBox ->
                 val key = prefKeys[index] + appInfo.packageName
@@ -299,7 +316,7 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
     override fun onItemLongClick(appInfo: AppInfo) {
         infoBinding.apply {
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            icon.setImageBitmap(AppUtils.getAppIconNew(appInfo.packageName))
+            icon.setImageDrawable(AppUtils.getAppIcon(appInfo.packageName))
             appName.text = appInfo.appName
             packageName.apply {
                 title.text = "APK包名"
@@ -371,9 +388,117 @@ class AppsFragment : BaseFragment<FragmentAppsBinding>(), AppsAdapter.OnItemClic
         viewModel.updateList(
             filter,
             keyWord,
-            isReverse,
-            if (keyWord.isEmpty()) 0L else 300L
+            isReverse
         )
     }
+
+    override fun onExport() {
+        val configuredList = viewModel.appsLiveData.value?.map { appInfo ->
+            ConfiguredBean(
+                appInfo.packageName,
+                prefKeys.map { key ->
+                    prefsHelper.getBoolean(key + appInfo.packageName, false)
+                })
+        } ?: emptyList()
+        try {
+            val content = GsonBuilder().setPrettyPrinting().create().toJson(configuredList)
+            if (saveFile(content)) {
+                backupSAFLauncher.launch("configured_list.json")
+            } else {
+                Toast.makeText(requireContext(), "导出失败", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                requireContext(),
+                "无法导出文件，未找到合适的应用来创建文件",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    private fun saveFile(content: String): Boolean {
+        return try {
+            val dir = File(requireContext().cacheDir.toString())
+            if (!dir.exists())
+                dir.mkdir()
+            val file = File("${requireContext().cacheDir}/configured_list.json")
+            if (!file.exists())
+                file.createNewFile()
+            else {
+                file.delete()
+                file.createNewFile()
+            }
+            val fileOutputStream = FileOutputStream(file)
+            fileOutputStream.write(content.toByteArray())
+            fileOutputStream.flush()
+            fileOutputStream.close()
+            true
+        } catch (e: IOException) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    private val backupSAFLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) backup@{ uri ->
+            if (uri == null) return@backup
+            try {
+                File("${requireContext().cacheDir}/configured_list.json").inputStream()
+                    .use { input ->
+                        requireContext().contentResolver.openOutputStream(uri).use { output ->
+                            if (output == null)
+                                Toast.makeText(requireContext(), "导出失败", Toast.LENGTH_SHORT)
+                                    .show()
+                            else input.copyTo(output)
+                        }
+                    }
+            } catch (e: IOException) {
+                e.printStackTrace()
+            }
+        }
+
+    override fun onRestore() {
+        restoreSAFLauncher.launch(arrayOf("application/json"))
+    }
+
+    private val restoreSAFLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            uri?.let {
+                CoroutineScope(Dispatchers.IO).launch {
+                    runCatching {
+                        val string = requireContext().contentResolver
+                            .openInputStream(uri)?.reader().use { it?.readText() }
+                            ?: throw IOException("Backup file was damaged")
+                        val dataList: List<ConfiguredBean> = Gson().fromJson(
+                            string,
+                            Array<ConfiguredBean>::class.java
+                        ).toList()
+                        dataList.forEach { bean ->
+                            bean.switchStates.forEachIndexed { index, state ->
+                                prefsHelper.setBoolean(prefKeys[index] + bean.packageName, state)
+                            }
+                        }
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(requireContext(), "导入成功", Toast.LENGTH_SHORT).show()
+                        }
+                    }.onFailure { e ->
+                        withContext(Dispatchers.Main) {
+                            MaterialAlertDialogBuilder(requireContext())
+                                .setTitle("导入失败")
+                                .setMessage(e.message ?: "Unknown error")
+                                .setPositiveButton(android.R.string.ok, null)
+                                .setNegativeButton("Crash Log") { _, _ ->
+                                    MaterialAlertDialogBuilder(requireContext())
+                                        .setTitle("Crash Log")
+                                        .setMessage(e.stackTraceToString())
+                                        .setPositiveButton(android.R.string.ok, null)
+                                        .show()
+                                }
+                                .show()
+                        }
+                    }
+                }
+            }
+        }
 
 }

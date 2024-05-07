@@ -39,15 +39,6 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
         setupViewPagerAndBottomNavigation();
     }
 
-/*
-    private void setData() {
-        if (PrefManager.INSTANCE.getSetData()) {
-            PrefManager.INSTANCE.setSetData(false);
-            DataUtil.INSTANCE.setData(UrlDatabase.Companion.getDatabase(this).getUrlDao());
-        }
-    }
-*/
-
     public static boolean isModuleActivated() {
         return false;
     }
@@ -85,6 +76,7 @@ public class MainActivity extends BaseActivity implements OnBackPressContainer, 
         CoordinatorLayout.LayoutParams layoutParams = (CoordinatorLayout.LayoutParams) bottomNavigationView.getLayoutParams();
         layoutParams.setBehavior(hideBottomViewOnScrollBehavior);
 
+        viewPager2.setOffscreenPageLimit(fragments.size());
         viewPager2.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
             @Override
             public void onPageSelected(int position) {

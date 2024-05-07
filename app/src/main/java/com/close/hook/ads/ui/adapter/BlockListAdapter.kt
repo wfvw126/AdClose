@@ -45,7 +45,7 @@ class BlockListAdapter(
 
         fun getItemDetails(): ItemDetailsLookup.ItemDetails<Url> =
             object : ItemDetailsLookup.ItemDetails<Url>() {
-                override fun getPosition(): Int = bindingAdapterPosition + 1
+                override fun getPosition(): Int = bindingAdapterPosition
                 override fun getSelectionKey(): Url = getItem(bindingAdapterPosition)
             }
 
@@ -74,10 +74,9 @@ class BlockListAdapter(
         private fun copyToClipboard(type: String, url: String) {
             val clipboardManager =
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clipDataText = "$type, $url"
-            val clipData = ClipData.newPlainText("request", clipDataText)
+            val clipData = ClipData.newPlainText(type, url)
             clipboardManager.setPrimaryClip(clipData)
-            Toast.makeText(context, "已复制: $clipDataText", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已复制: $url", Toast.LENGTH_SHORT).show()
         }
 
     }

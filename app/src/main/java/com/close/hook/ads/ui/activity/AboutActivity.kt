@@ -34,9 +34,6 @@ class AboutActivity : AbsAboutActivity() {
     |拦截屏蔽应用的网络广告请求。
     |
     |同时提供了一些其他Hook功能和特定应用去广告适配。
-    |
-    |请不要请将此模块发送分享于QQ群，酷安，葫芦侠等社区，谢谢配合。
-    |为此，AdClose已上架LSPosed模块仓库。
     """.trimMargin()))
 
         items.add(Category("Developer"))

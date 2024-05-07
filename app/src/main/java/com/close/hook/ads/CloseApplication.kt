@@ -16,11 +16,14 @@ class CloseApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+
         closeApp = this
+
         AppCenter.start(
             this, "621cdb49-4473-44d3-a8f8-e76f28ba43d7",
             Analytics::class.java, Crashes::class.java
         )
+
         AppCompatDelegate.setDefaultNightMode(darkTheme)
 
         LocaleDelegate.defaultLocale = getLocale(PrefManager.language)

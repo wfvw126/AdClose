@@ -1,14 +1,9 @@
 package com.close.hook.ads.ui.fragment.request
 
 import android.content.ActivityNotFoundException
-import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Context.RECEIVER_EXPORTED
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -20,7 +15,8 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.view.ActionMode
 import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.selection.ItemDetailsLookup
 import androidx.recyclerview.selection.ItemKeyProvider
 import androidx.recyclerview.selection.Selection
@@ -37,7 +33,6 @@ import com.close.hook.ads.databinding.FragmentHostsListBinding
 import com.close.hook.ads.ui.activity.MainActivity
 import com.close.hook.ads.ui.adapter.BlockedRequestsAdapter
 import com.close.hook.ads.ui.adapter.FooterAdapter
-import com.close.hook.ads.ui.adapter.HeaderAdapter
 import com.close.hook.ads.ui.fragment.base.BaseFragment
 import com.close.hook.ads.ui.viewmodel.BlockListViewModel
 import com.close.hook.ads.ui.viewmodel.UrlViewModelFactory
@@ -51,29 +46,36 @@ import com.close.hook.ads.util.OnBackPressListener
 import com.close.hook.ads.util.OnCLearCLickContainer
 import com.close.hook.ads.util.OnClearClickListener
 import com.close.hook.ads.util.dp
+import com.close.hook.ads.util.setSpaceFooterView
 import com.google.android.material.snackbar.Snackbar
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.zhanghai.android.fastscroll.FastScrollerBuilder
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 
 
 class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearClickListener,
     IOnTabClickListener, IOnFabClickListener, OnBackPressListener {
 
-    private val viewModel by viewModels<BlockListViewModel> {
-        UrlViewModelFactory(requireContext())
+    private val viewModel by lazy {
+        ViewModelProvider(
+            owner = requireParentFragment(),
+            factory = UrlViewModelFactory(requireContext())
+        )[BlockListViewModel::class.java]
     }
     private lateinit var mAdapter: BlockedRequestsAdapter
-    private val headerAdapter = HeaderAdapter()
     private val footerAdapter = FooterAdapter()
     private lateinit var type: String
-    private lateinit var filter: IntentFilter
     private var tracker: SelectionTracker<BlockedRequest>? = null
     private var selectedItems: Selection<BlockedRequest>? = null
     private var mActionMode: ActionMode? = null
@@ -97,24 +99,24 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
         super.onViewCreated(view, savedInstanceState)
 
         initView()
-        setupBroadcastReceiver()
         setUpTracker()
         addObserverToTracker()
+        initObserve()
 
     }
 
-    private val receiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val request = intent.getParcelableExtra<BlockedRequest>("request")
-            request?.let { item ->
-                val checkItem = viewModel.requestList.find {
-                    it.request == item.request
+    private fun initObserve() {
+        viewModel.requestList.observe(viewLifecycleOwner) {
+            it?.let {
+                when (type) {
+                    "all" -> mAdapter.submitList(it)
+
+                    "block" -> mAdapter.submitList(it.filter { it.isBlocked == true })
+
+                    "pass" -> mAdapter.submitList(it.filter { it.isBlocked == false })
                 }
-                if (checkItem == null) {
-                    viewModel.requestList.add(0, item)
-                    mAdapter.submitList(viewModel.requestList.toList())
-                    binding.vfContainer.displayedChild = viewModel.requestList.size
-                }
+                if (binding.vfContainer.displayedChild != it.size)
+                    binding.vfContainer.displayedChild = it.size
             }
         }
     }
@@ -122,7 +124,7 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
     private fun initView() {
         mAdapter = BlockedRequestsAdapter(viewModel.dataSource)
         binding.recyclerView.apply {
-            adapter = ConcatAdapter(headerAdapter, mAdapter)
+            adapter = ConcatAdapter(mAdapter)
             layoutManager = LinearLayoutManager(requireContext())
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -139,17 +141,7 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
         }
 
         binding.vfContainer.setOnDisplayedChildChangedListener {
-            val isNotAtBottom = (binding.recyclerView.layoutManager as LinearLayoutManager)
-                .findLastCompletelyVisibleItemPosition() < mAdapter.itemCount - 1
-
-            with(binding.recyclerView.adapter as ConcatAdapter) {
-                val hasFooter = adapters.contains(footerAdapter)
-                if (isNotAtBottom && hasFooter) {
-                    removeAdapter(footerAdapter)
-                } else if (!isNotAtBottom && !hasFooter) {
-                    addAdapter(footerAdapter)
-                }
-            }
+            binding.recyclerView.setSpaceFooterView(footerAdapter)
         }
     }
 
@@ -162,7 +154,8 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
 
                 if (size > 0) {
                     if (mActionMode == null) {
-                        mActionMode = (activity as? MainActivity)?.startSupportActionMode(mActionModeCallback)
+                        mActionMode =
+                            (activity as? MainActivity)?.startSupportActionMode(mActionModeCallback)
                     }
                     mActionMode?.title = "Selected $size"
                 } else {
@@ -216,21 +209,6 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
         mAdapter.tracker = tracker
     }
 
-    private fun setupBroadcastReceiver() {
-        filter = when (type) {
-            "all" -> IntentFilter("com.rikkati.ALL_REQUEST")
-            "block" -> IntentFilter("com.rikkati.BLOCKED_REQUEST")
-            "pass" -> IntentFilter("com.rikkati.PASS_REQUEST")
-            else -> throw IllegalArgumentException("Invalid type: $type")
-        }
-
-        requireContext().registerReceiver(receiver, filter, getReceiverOptions())
-    }
-
-    private fun getReceiverOptions(): Int {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) RECEIVER_EXPORTED else 0
-    }
-
     override fun search(keyword: String) {
         viewModel.searchQuery.value = keyword
 
@@ -240,11 +218,11 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
                 .distinctUntilChanged()
                 .flatMapLatest { query ->
                     flow {
-                        val safeAppInfoList = viewModel.requestList.ifEmpty { emptyList() }
-                        emit(safeAppInfoList.filter { blockedRequest ->
+                        val safeAppInfoList = viewModel.requestList.value?.ifEmpty { emptyList() }
+                        emit(safeAppInfoList?.filter { blockedRequest ->
                             blockedRequest.request.contains(query, ignoreCase = true) ||
-                            blockedRequest.packageName.contains(query, ignoreCase = true) ||
-                            blockedRequest.appName.contains(query, ignoreCase = true)
+                                    blockedRequest.packageName.contains(query, ignoreCase = true) ||
+                                    blockedRequest.appName.contains(query, ignoreCase = true)
                         })
                     }
                 }
@@ -257,14 +235,8 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        requireContext().unregisterReceiver(receiver)
-    }
-
     override fun onClearAll() {
-        viewModel.requestList.clear()
-        mAdapter.submitList(emptyList())
+        viewModel.onClearAll()
         (activity as? INavContainer)?.showNavigation()
     }
 
@@ -279,6 +251,7 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
         (requireParentFragment() as? IOnTabClickContainer)?.tabController = null
         (requireParentFragment() as? IOnFabClickContainer)?.fabController = null
         (requireParentFragment() as? OnBackPressContainer)?.backController = null
+        tracker?.clearSelection()
     }
 
     override fun onResume() {
@@ -313,66 +286,88 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
     }
 
     override fun onExport() {
-        if (viewModel.requestList.isEmpty()) {
+        if (viewModel.requestList.value.isNullOrEmpty()) {
             Toast.makeText(requireContext(), "请求列表为空，无法导出", Toast.LENGTH_SHORT).show()
             return
         }
-        if (saveFile(Gson().toJson(viewModel.requestList))) {
-            try {
+
+        try {
+            val content = GsonBuilder().setPrettyPrinting().create().toJson(viewModel.requestList.value)
+            if (saveFile(content)) {
                 backupSAFLauncher.launch("${type}_request_list.json")
-            } catch (e: ActivityNotFoundException) {
-                Toast.makeText(
-                    requireContext(),
-                    "无法导出文件，未找到合适的应用来创建文件",
-                    Toast.LENGTH_SHORT
-                ).show()
+            } else {
+                Toast.makeText(requireContext(), "导出失败", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(requireContext(), "导出失败", Toast.LENGTH_SHORT).show()
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                requireContext(),
+                "无法导出文件，未找到合适的应用来创建文件",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
     override fun onBlock() {
         selectedItems?.let { selection ->
             if (selection.size() != 0) {
-                val currentList = viewModel.blackListLiveData.value?.toList() ?: emptyList()
-                val updateList = selection.toList().map {
-                    Url(
-                        if (it.appName.trim().endsWith("DNS")) "Domain" else "URL",
-                        it.request
-                    )
-                }.filter {
-                    it !in currentList
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val updateList = selection.toList().map {
+                        Url(
+                            if (it.appName.trim().endsWith("DNS")) "Domain" else "URL",
+                            it.request
+                        )
+                    }.filterNot {
+                        viewModel.dataSource.isExist(it.type, it.url)
+                    }
+                    viewModel.addListUrl(updateList)
+
+                    withContext(Dispatchers.Main) {
+                        tracker?.clearSelection()
+                        val snackBar = Snackbar.make(
+                            requireParentFragment().requireView(),
+                            "已批量加入黑名单",
+                            Snackbar.LENGTH_SHORT
+                        )
+                        val lp = CoordinatorLayout.LayoutParams(
+                            CoordinatorLayout.LayoutParams.MATCH_PARENT,
+                            CoordinatorLayout.LayoutParams.WRAP_CONTENT
+                        )
+                        lp.gravity = Gravity.BOTTOM
+                        lp.setMargins(10.dp, 0, 10.dp, 90.dp)
+                        snackBar.view.layoutParams = lp
+                        snackBar.show()
+                    }
                 }
-                viewModel.addListUrl(updateList)
-                tracker?.clearSelection()
-                val snackBar = Snackbar.make(
-                    requireParentFragment().requireView(),
-                    "已批量加入黑名单",
-                    Snackbar.LENGTH_SHORT
-                )
-                val lp = CoordinatorLayout.LayoutParams(
-                    CoordinatorLayout.LayoutParams.MATCH_PARENT,
-                    CoordinatorLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.gravity = Gravity.BOTTOM
-                lp.setMargins(10.dp, 0, 10.dp, 90.dp)
-                snackBar.view.layoutParams = lp
-                snackBar.show()
             }
         }
     }
 
     private fun onCopy() {
         selectedItems?.let { selection ->
-            val selectedRequests = selection.map { it.request }
+            val selectedRequests = selection.map { item ->
+                val type =
+                    if (item.request.startsWith("http://") || item.request.startsWith("https://")) "URL" else item.blockType
+                "$type, ${item.request}"
+            }
             val combinedText = selectedRequests.joinToString(separator = "\n")
             val clipboard =
                 requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("copied_requests", combinedText)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(requireContext(), "已批量复制到剪贴板", Toast.LENGTH_SHORT).show()
             tracker?.clearSelection()
+            val snackBar = Snackbar.make(
+                requireParentFragment().requireView(),
+                "已批量复制到剪贴板",
+                Snackbar.LENGTH_SHORT
+            )
+            val lp = CoordinatorLayout.LayoutParams(
+                CoordinatorLayout.LayoutParams.MATCH_PARENT,
+                CoordinatorLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.gravity = Gravity.BOTTOM
+            lp.setMargins(10.dp, 0, 10.dp, 90.dp)
+            snackBar.view.layoutParams = lp
+            snackBar.show()
         }
     }
 
@@ -406,12 +401,12 @@ class RequestListFragment : BaseFragment<FragmentHostsListBinding>(), OnClearCli
     class CategoryItemKeyProvider(private val adapter: BlockedRequestsAdapter) :
         ItemKeyProvider<BlockedRequest>(SCOPE_CACHED) {
         override fun getKey(position: Int): BlockedRequest? {
-            return adapter.currentList.getOrNull(position - 1)
+            return adapter.currentList.getOrNull(position)
         }
 
         override fun getPosition(key: BlockedRequest): Int {
             val index = adapter.currentList.indexOfFirst { it == key }
-            return if (index >= 0) index + 1 else RecyclerView.NO_POSITION
+            return if (index >= 0) index else RecyclerView.NO_POSITION
         }
     }
 

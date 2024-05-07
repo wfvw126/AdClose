@@ -47,10 +47,11 @@ public class HideEnvi {
     public static void handle() {
         hideXposedMagiskPaths();
         hideXposedMagiskInExec();
+        AntiEmulatorDetection.handle();
     }
 
     private static void hideXposedMagiskPaths() {
-        HookUtil.hookAllMethods(File.class, "exists", param -> {
+        HookUtil.hookAllMethods(File.class, "exists", "before", param -> {
             File file = (File) param.thisObject;
             if (XPOSED_MAGISK_PATHS.contains(file.getAbsolutePath())) {
                 param.setResult(false);
@@ -59,7 +60,7 @@ public class HideEnvi {
     }
 
     private static void hideXposedMagiskInExec() {
-        HookUtil.hookAllMethods(Runtime.class, "exec", param -> {
+        HookUtil.hookAllMethods(Runtime.class, "exec", "before", param -> {
             if (detectXposedOrMagiskInMemory()) {
                 param.setResult(null);
             }

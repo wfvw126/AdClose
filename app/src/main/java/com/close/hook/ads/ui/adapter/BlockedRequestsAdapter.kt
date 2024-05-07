@@ -77,7 +77,7 @@ class BlockedRequestsAdapter(
 
         fun getItemDetails(): ItemDetailsLookup.ItemDetails<BlockedRequest> =
             object : ItemDetailsLookup.ItemDetails<BlockedRequest>() {
-                override fun getPosition(): Int = bindingAdapterPosition + 1
+                override fun getPosition(): Int = bindingAdapterPosition
                 override fun getSelectionKey(): BlockedRequest? = getItem(bindingAdapterPosition)
             }
 
@@ -139,7 +139,7 @@ class BlockedRequestsAdapter(
                 "${request.appName} ${if (request.urlString.isNullOrEmpty()) "" else " LOG"}"
             this.request.text = request.request
             timestamp.text = DATE_FORMAT.format(Date(request.timestamp))
-            icon.setImageBitmap(AppUtils.getAppIconNew(request.packageName))
+            icon.setImageDrawable(AppUtils.getAppIcon(request.packageName))
             blockType.visibility =
                 if (request.blockType.isNullOrEmpty()) View.GONE else View.VISIBLE
             blockType.text = request.blockType
@@ -167,19 +167,26 @@ class BlockedRequestsAdapter(
             Toast.makeText(itemView.context, "已复制: $text", Toast.LENGTH_SHORT).show()
         }
 
-        private fun toggleBlockStatus(request: BlockedRequest) =
-            CoroutineScope(Dispatchers.IO).launch {
-                if (request.isBlocked == true) {
-                    dataSource.removeUrlString(type, url)
-                    request.isBlocked = false
-                } else {
-                    dataSource.addUrl(Url(type, url))
-                    request.isBlocked = true
-                }
-                withContext(Dispatchers.Main) {
-                    checkBlockStatus(request.isBlocked)
-                }
+        private fun toggleBlockStatus(request: BlockedRequest) = CoroutineScope(Dispatchers.IO).launch {
+            val position = bindingAdapterPosition
+            if (position == RecyclerView.NO_POSITION) return@launch
+
+            val updatedList = currentList.toMutableList()
+
+            if (request.isBlocked == true) {
+                dataSource.removeUrlString(type, url)
+                request.isBlocked = false
+            } else {
+                dataSource.addUrl(Url(type, url))
+                request.isBlocked = true
             }
+
+            updatedList.removeAt(position)
+
+            withContext(Dispatchers.Main) {
+                submitList(updatedList)
+            }
+        }
 
         @SuppressLint("RestrictedApi")
         private fun checkBlockStatus(isBlocked: Boolean?) {

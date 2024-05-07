@@ -5,6 +5,8 @@ import java.lang.reflect.Modifier
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
 import com.close.hook.ads.hook.util.DexKitUtil
+import com.close.hook.ads.hook.util.HookUtil.findAndHookMethod
+import com.close.hook.ads.hook.util.HookUtil.hookMethod
 import org.luckypray.dexkit.result.MethodData
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XC_MethodReplacement
@@ -44,6 +46,8 @@ object SDKAdsKit {
 
         foundMethodsForAds?.let { hookMethods(it, DexKitUtil.context.classLoader) }
 
+        handlePangolinSDK()
+
         blockFirebaseWithString()
         blockFirebaseWithString2()
 
@@ -52,6 +56,22 @@ object SDKAdsKit {
         blockAdsWithString()
 
         DexKitUtil.releaseBridge()
+    }
+
+    fun handlePangolinSDK() {
+        val packageName = DexKitUtil.context.packageName
+        val initializeMessage = "tt_sdk_settings_other"
+        val cacheKeyForString = "$packageName:handlePangolinSDK"
+
+        val foundMethodsForString = DexKitUtil.getCachedOrFindMethods(cacheKeyForString) {
+            DexKitUtil.getBridge().findMethod {
+                matcher {
+                    usingStrings = listOf(initializeMessage)
+                }
+            }?.toList()
+        }
+
+        foundMethodsForString?.let { hookMethods(it, DexKitUtil.context.classLoader) }
     }
 
     fun blockFirebaseWithString() {
@@ -87,10 +107,8 @@ object SDKAdsKit {
         foundMethodsForString?.forEach { methodData ->
             try {
                 val method = methodData.getMethodInstance(DexKitUtil.context.classLoader)
-                XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        param.result = null
-                    }
+                hookMethod(method, "after", { param ->
+                    param.result = null
                 })
             } catch (e: Throwable) {
             }
@@ -98,16 +116,19 @@ object SDKAdsKit {
     }
 
     fun blockAdsWithBaseBundle() {
-        XposedHelpers.findAndHookMethod(BaseBundle::class.java, "get", String::class.java, object : XC_MethodHook() {
-            override fun afterHookedMethod(param: MethodHookParam) {
+        findAndHookMethod(
+            BaseBundle::class.java,
+            "get",
+            "after",
+            { param ->
                 val key = param.args[0] as String
-
                 if ("com.google.android.gms.ads.APPLICATION_ID" == key) {
                     val newValue = "ca-app-pub-0000000000000000~0000000000"
                     param.result = newValue
                 }
-            }
-        })
+            },
+            String::class.java
+        )
     }
 
     fun blockAdsWithString() {
@@ -126,10 +147,8 @@ object SDKAdsKit {
         foundMethodsForString?.forEach { methodData ->
             try {
                 val method = methodData.getMethodInstance(DexKitUtil.context.classLoader)
-                XposedBridge.hookMethod(method, object : XC_MethodHook() {
-                    override fun afterHookedMethod(param: MethodHookParam) {
-                        param.result = true
-                    }
+                hookMethod(method, "after", { param ->
+                    param.result = true
                 })
             } catch (e: Throwable) {
             }

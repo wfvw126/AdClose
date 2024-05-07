@@ -1,13 +1,13 @@
 package com.close.hook.ads.data
 
 import android.content.Context
-import androidx.lifecycle.LiveData
+import com.close.hook.ads.BlockedBean
 import com.close.hook.ads.data.database.UrlDatabase
 import com.close.hook.ads.data.model.Url
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
 class DataSource(context: Context) {
     private val urlDao = UrlDatabase.getDatabase(context).urlDao
@@ -57,12 +57,19 @@ class DataSource(context: Context) {
         }
     }
 
-    fun search(searchText: String): List<Url> {
-        return urlDao.searchUrls(searchText)
-    }
+    fun search(searchText: String): Flow<List<Url>> = urlDao.searchUrls(searchText)
 
     fun isExist(type: String, url: String): Boolean {
         return urlDao.isExist(type, url)
+    }
+
+    fun checkIsBlocked(type: String, url: String): BlockedBean {
+        val urlEntry = urlDao.findMatchingUrl(type, url)
+        return if (urlEntry != null) {
+            BlockedBean(true, urlEntry.type, urlEntry.url)
+        } else {
+            BlockedBean(false, null, null)
+        }
     }
 
     companion object {

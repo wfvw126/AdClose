@@ -8,33 +8,88 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
 import com.close.hook.ads.R
 import com.close.hook.ads.databinding.BaseTablayoutViewpagerBinding
 import com.close.hook.ads.databinding.BottomDialogSearchFilterBinding
 import com.close.hook.ads.ui.activity.MainActivity
 import com.close.hook.ads.ui.fragment.base.BasePagerFragment
+import com.close.hook.ads.util.IOnFabClickContainer
+import com.close.hook.ads.util.IOnFabClickListener
 import com.close.hook.ads.util.PrefManager
 import com.close.hook.ads.util.dp
+import com.google.android.material.behavior.HideBottomViewOnScrollBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.snackbar.Snackbar
 
-class AppsPagerFragment : BasePagerFragment() {
+class AppsPagerFragment : BasePagerFragment(), IOnFabClickContainer {
 
     override val tabList: List<Int> =
         listOf(R.string.tab_user_apps, R.string.tab_configured_apps, R.string.tab_system_apps)
     private var bottomSheet: BottomSheetDialog? = null
     private lateinit var filerBinding: BottomDialogSearchFilterBinding
     private lateinit var filterBtn: ImageButton
+    private lateinit var backupFab: FloatingActionButton
+    private lateinit var restoreFab: FloatingActionButton
+    override var fabController: IOnFabClickListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         _binding = BaseTablayoutViewpagerBinding.inflate(inflater, container, false)
         setupFilterButton()
+        setupFab()
         return binding.root
+    }
+
+    private fun setupFab() {
+        backupFab = getFab(R.drawable.ic_export, R.string.export) {
+            fabController?.onExport()
+        }
+        restoreFab = getFab(R.drawable.ic_import, R.string.restore) {
+            fabController?.onRestore()
+        }
+        updateFabMargin()
+        binding.root.apply {
+            addView(backupFab)
+            addView(restoreFab)
+        }
+    }
+
+    private fun getFab(image: Int, tooltip: Int, onClick: () -> Unit): FloatingActionButton =
+        FloatingActionButton(requireContext()).apply {
+            layoutParams = CoordinatorLayout.LayoutParams(
+                CoordinatorLayout.LayoutParams.WRAP_CONTENT,
+                CoordinatorLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                behavior = HideBottomViewOnScrollBehavior<FloatingActionButton>()
+            }
+            setImageResource(image)
+            tooltipText = getString(tooltip)
+            setOnClickListener { onClick() }
+        }
+
+    private fun updateFabMargin() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            restoreFab.updateLayoutParams<CoordinatorLayout.LayoutParams> {
+                rightMargin = 25.dp
+                bottomMargin = navigationBars.bottom + 105.dp
+            }
+            backupFab.updateLayoutParams<CoordinatorLayout.LayoutParams> {
+                rightMargin = 25.dp
+                bottomMargin = navigationBars.bottom + 186.dp
+            }
+            insets
+        }
     }
 
     private fun setupFilterButton() {
@@ -47,7 +102,11 @@ class AppsPagerFragment : BasePagerFragment() {
             setImageResource(R.drawable.ic_filter)
 
             val outValue = TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true)
+            context.theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless,
+                outValue,
+                true
+            )
             setBackgroundResource(outValue.resourceId)
 
             binding.searchContainer.addView(this)
@@ -105,23 +164,25 @@ class AppsPagerFragment : BasePagerFragment() {
             "最近更新".takeIf { PrefManager.updated },
             "已禁用".takeIf { PrefManager.disabled }
         )
-        controller?.updateSortList(Pair(PrefManager.order, filters), binding.editText.text.toString(), PrefManager.isReverse)
+        controller?.updateSortList(
+            Pair(PrefManager.order, filters),
+            binding.editText.text.toString(),
+            PrefManager.isReverse
+        )
     }
 
     private fun resetFilters() {
         with(filerBinding) {
-            sortBy.check(0)
+            sortBy.check(sortBy.getChildAt(0).id)
             filter.clearCheck()
             reverseSwitch.isChecked = false
         }
 
-        PrefManager.apply {
-            isReverse = false
-            order = "应用名称"
-            configured = false
-            updated = false
-            disabled = false
-        }
+        PrefManager.isReverse = false
+        PrefManager.order = "应用名称"
+        PrefManager.configured = false
+        PrefManager.updated = false
+        PrefManager.disabled = false
 
         updateSortAndFilters()
     }
@@ -133,11 +194,11 @@ class AppsPagerFragment : BasePagerFragment() {
                 text = title
                 isCheckable = true
                 isClickable = true
-                isChecked = when {
-                    isSortBy -> title == PrefManager.order
-                    else -> title == "已配置" && PrefManager.configured ||
-                            title == "最近更新" && PrefManager.updated ||
-                            title == "已禁用" && PrefManager.disabled
+                isChecked = if (isSortBy) title == PrefManager.order else when (title) {
+                    "已配置" -> PrefManager.configured
+                    "最近更新" -> PrefManager.updated
+                    "已禁用" -> PrefManager.disabled
+                    else -> false
                 }
                 setOnClickListener { handleChipClick(this, title, isSortBy) }
             }
@@ -155,39 +216,21 @@ class AppsPagerFragment : BasePagerFragment() {
         if (isSortBy) {
             PrefManager.order = title
         } else {
-            val isChecked = chip.isChecked
             when (title) {
-                "已配置" -> PrefManager.configured = isChecked
-                "最近更新" -> PrefManager.updated = isChecked
-                "已禁用" -> PrefManager.disabled = isChecked
+                "已配置" -> PrefManager.configured = chip.isChecked
+                "最近更新" -> PrefManager.updated = chip.isChecked
+                "已禁用" -> PrefManager.disabled = chip.isChecked
             }
         }
 
-        val message = if (isSortBy) "${requireContext().getString(R.string.sort_by_default)}: $title" else "$title 已更新"
+        val message =
+            if (isSortBy) "${requireContext().getString(R.string.sort_by_default)}: $title" else "$title 已更新"
         Snackbar.make(filerBinding.root, message, Snackbar.LENGTH_SHORT).show()
         updateSortAndFilters()
     }
 
-    private fun showFilterToast(title: String, isEnabled: Boolean) {
-        val message = if (isEnabled) {
-            "${requireContext().getString(R.string.filter_enabled)}: $title"
-        } else {
-            "${requireContext().getString(R.string.filter_disabled)}: $title"
-        }
-        Snackbar.make(filerBinding.root, message, Snackbar.LENGTH_SHORT).show()
-    }
-
-    override fun searchJob(text: String) {
-        val filterList = ArrayList<String>().apply {
-            if (PrefManager.configured) add("已配置")
-            if (PrefManager.updated) add("最近更新")
-            if (PrefManager.disabled) add("已禁用")
-        }
-        controller?.updateSortList(
-            Pair(PrefManager.order, filterList),
-            text,
-            PrefManager.isReverse
-        )
+    override fun search(text: String) {
+        updateSortAndFilters()
     }
 
     override fun getFragment(position: Int): Fragment =
@@ -207,5 +250,6 @@ class AppsPagerFragment : BasePagerFragment() {
         super.onDestroyView()
         bottomSheet?.dismiss()
         bottomSheet = null
+        fabController = null
     }
 }

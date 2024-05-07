@@ -107,7 +107,17 @@ android {
         }
     }
 
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/java", "src/main/aidl")
+            aidl.srcDirs("src/main/aidl")
+            assets.srcDirs("src/main/assets")
+            res.srcDirs("src/main/res")
+        }
+    }
+
     buildFeatures {
+        aidl = true
         viewBinding = true
         buildConfig = true
     }
@@ -153,5 +163,5 @@ dependencies {
     annotationProcessor("com.github.bumptech.glide:compiler:4.16.0")
     implementation("com.microsoft.appcenter:appcenter-analytics:5.0.4")
     implementation("com.microsoft.appcenter:appcenter-crashes:5.0.4")
-
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.13")
 }

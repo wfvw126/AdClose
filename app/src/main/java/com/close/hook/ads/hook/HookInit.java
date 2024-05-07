@@ -7,16 +7,19 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 
+import com.close.hook.ads.hook.util.HookUtil;
+
 import com.close.hook.ads.hook.gc.DisableFlagSecure;
 import com.close.hook.ads.hook.gc.DisableShakeAd;
+import com.close.hook.ads.hook.gc.DisableClipboard;
 import com.close.hook.ads.hook.gc.HideEnvi;
 import com.close.hook.ads.hook.gc.network.HideVPNStatus;
 import com.close.hook.ads.hook.gc.network.RequestHook;
 import com.close.hook.ads.hook.ha.AppAds;
 import com.close.hook.ads.hook.ha.SDKAds;
 import com.close.hook.ads.hook.ha.SDKAdsKit;
+
 import com.close.hook.ads.hook.preference.PreferencesHelper;
-import com.close.hook.ads.ui.activity.MainActivity;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -39,10 +42,9 @@ public class HookInit implements IXposedHookLoadPackage {
 		performHooking(lpparam);
 	}
 
-	private void activateModule(XC_LoadPackage.LoadPackageParam lpparam) {
-		XposedHelpers.findAndHookMethod(MainActivity.class.getName(), lpparam.classLoader, "isModuleActivated",
-				XC_MethodReplacement.returnConstant(true));
-	}
+    private void activateModule(XC_LoadPackage.LoadPackageParam lpparam) {
+		HookUtil.hookSingleMethod(lpparam.classLoader, "com.close.hook.ads.ui.activity.MainActivity", "isModuleActivated", true);
+    }
 
 	private void performHooking(XC_LoadPackage.LoadPackageParam lpparam) {
 		if (TAG.equals(lpparam.packageName)) {
@@ -60,6 +62,10 @@ public class HookInit implements IXposedHookLoadPackage {
 			HideVPNStatus.proxy();
 		}
 
+		if (settingsManager.isDisableClipboard()) {
+			DisableClipboard.handle();
+		}
+
 		if (settingsManager.isDisableFlagSecureEnabled()) {
 			DisableFlagSecure.process();
 		}
@@ -72,36 +78,39 @@ public class HookInit implements IXposedHookLoadPackage {
 			DisableShakeAd.handle();
 		}
 
-		try {
-			XposedHelpers.findAndHookMethod(Application.class, "attach", Context.class, new XC_MethodHook() {
-				@Override
-				protected void afterHookedMethod(MethodHookParam param) {
-					globalContext = (Context) param.args[0];
-					ClassLoader classLoader = globalContext.getClassLoader();
+        try {
+            HookUtil.findAndHookMethod(
+                Application.class,
+                "attach",
+                "after",
+                param -> {
 
-					String packageName = globalContext.getPackageName();
-					CharSequence appName = getAppName(globalContext, packageName);
-
-					if (!TAG.equals(packageName)) {
-		//				XposedBridge.log("found classload is => " + classLoader.toString());
-						XposedBridge.log("Application Name: " + appName);
-					}
-
-					if (settingsManager.isRequestHookEnabled()) {
-						RequestHook.init();
-					}
-
-					AppAds.progress(classLoader, packageName);
-
-					if (settingsManager.isHandlePlatformAdEnabled()) {
-						SDKAdsKit.INSTANCE.blockAds();
-						SDKAds.hookAds(classLoader);
-					}
-				}
-			});
-		} catch (Exception e) {
-			XposedBridge.log(TAG + " Exception in handleLoadPackage: " + Log.getStackTraceString(e));
-		}
+                    globalContext = (Context) param.args[0];
+                    ClassLoader classLoader = globalContext.getClassLoader();
+    
+                    String packageName = globalContext.getPackageName();
+                    CharSequence appName = getAppName(globalContext, packageName);
+    
+                    if (!TAG.equals(packageName)) {
+                        XposedBridge.log("Application Name: " + appName);
+                    }
+    
+                    if (settingsManager.isRequestHookEnabled()) {
+                        RequestHook.init();
+                    }
+    
+                    AppAds.progress(classLoader, packageName);
+    
+                    if (settingsManager.isHandlePlatformAdEnabled()) {
+                        SDKAdsKit.INSTANCE.blockAds();
+                        SDKAds.hookAds(classLoader);
+                    }
+                },
+                Context.class
+            );
+        } catch (Exception e) {
+            XposedBridge.log(TAG + " Exception in handleLoadPackage: " + Log.getStackTraceString(e));
+        }
 	}
 
 	private boolean shouldIgnorePackage(XC_LoadPackage.LoadPackageParam lpparam) {
